@@ -1,0 +1,29 @@
+name: dockerBuildAndPush
+description: Build and push Docker image
+inputs:
+  image_name:
+    description: Docker image name
+    required: true
+  tag:
+    description: Docker image tag
+    required: false
+    default: latest
+  registry:
+    description: Docker registry
+    required: false
+    default: docker.io
+runs:
+  using: composite
+  steps:
+  - name: Show image details
+    run: echo "Building image ${{ inputs.registry }}/${{ inputs.image_name }}:${{
+      inputs.tag }}"
+    shell: bash
+  - name: Build Docker image
+    run: docker build -t ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.tag
+      }} .
+    shell: bash
+  - name: Push Docker image
+    run: docker push ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.tag
+      }}
+    shell: bash

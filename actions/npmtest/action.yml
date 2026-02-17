@@ -1,0 +1,36 @@
+name: npmTest
+description: Run npm test script with optional JUnit publishing
+inputs:
+  workspace:
+    description: Directory to run tests in
+    required: false
+    default: .
+  script:
+    description: NPM script to run
+    required: false
+    default: test
+  publishJunit:
+    description: Publish JUnit results
+    required: false
+    default: true
+  junitPattern:
+    description: JUnit results file pattern
+    required: false
+    default: '**/junit.xml'
+runs:
+  using: composite
+  steps:
+  - name: Run npm test script
+    run: 'set -euo pipefail
+
+      cd "${{ inputs.workspace }}"
+
+      npm run ${{ inputs.script }} -- --ci --reporters=default --reporters=jest-junit
+
+      '
+    shell: bash
+  - name: Publish JUnit results if enabled
+    run: "if [ \"${{ inputs.publishJunit }}\" = \"true\" ]; then\n  echo \"Publishing\
+      \ JUnit results from pattern: ${{ inputs.junitPattern }}\"\n  # Placeholder\
+      \ for JUnit publishing step\nelse\n  echo \"JUnit publishing skipped\"\nfi\n"
+    shell: bash

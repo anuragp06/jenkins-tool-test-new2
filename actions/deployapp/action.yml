@@ -1,0 +1,69 @@
+name: deployApp
+description: Deploy a Kubernetes deployment with a new container image
+inputs:
+  environment:
+    description: Target environment (e.g. dev, prod)
+    required: true
+  namespace:
+    description: Kubernetes namespace
+    required: true
+  deployment:
+    description: Kubernetes deployment name
+    required: true
+  container:
+    description: Container name in the deployment
+    required: true
+  image:
+    description: Image URI to deploy
+    required: false
+    default: ''
+  kubeconfigCredentialId:
+    description: GitHub secret name containing kubeconfig file
+    required: false
+    default: ''
+  rolloutTimeout:
+    description: Rollout status timeout (e.g. 180s)
+    required: false
+    default: 180s
+runs:
+  using: composite
+  steps:
+  - name: Check required inputs
+    run: "missing=\"\"\nfor key in environment namespace deployment container; do\n\
+      \  val=\"${{ inputs[$key] }}\"\n  if [ -z \"$val\" ]; then\n    echo \"Missing\
+      \ required input: $key\"\n    missing=1\n  fi\ndone\nif [ -z \"${{ inputs.image\
+      \ }}\" ]; then\n  if [ -z \"${IMAGE_URI}\" ]; then\n    echo \"deployApp: image\
+      \ is required (pass input 'image' or set env.IMAGE_URI)\"\n    exit 1\n  fi\n\
+      fi\nif [ ! -z \"$missing\" ]; then\n  exit 1\nfi\n"
+    shell: bash
+  - name: Set image variable
+    run: "if [ -n \"${{ inputs.image }}\" ]; then\n  echo \"IMAGE_TO_DEPLOY=${{ inputs.image\
+      \ }}\" >> $GITHUB_ENV\nelse\n  echo \"IMAGE_TO_DEPLOY=${IMAGE_URI}\" >> $GITHUB_ENV\n\
+      fi\n"
+    shell: bash
+  - name: Show deployment info
+    run: echo "Deploying ${{ inputs.deployment }} to ${{ inputs.environment }}/${{
+      inputs.namespace }} with image ${IMAGE_TO_DEPLOY}"
+    shell: bash
+  - name: Write kubeconfig file
+    run: "if [ -n \"${{ inputs.kubeconfigCredentialId }}\" ]; then\n  secret_name=\"\
+      ${{ inputs.kubeconfigCredentialId }}\"\nelse\n  secret_name=\"kubeconfig-${{\
+      \ inputs.environment }}\"\nfi\necho \"${{ secrets[secret_name] }}\" > kubeconfig\n\
+      echo \"KUBECONFIG_PATH=$(pwd)/kubeconfig\" >> $GITHUB_ENV\n"
+    shell: bash
+  - name: Set deployment image
+    run: 'export KUBECONFIG="${KUBECONFIG_PATH}"
+
+      kubectl -n "${{ inputs.namespace }}" set image deployment/"${{ inputs.deployment
+      }}" "${{ inputs.container }}"="${IMAGE_TO_DEPLOY}"
+
+      '
+    shell: bash
+  - name: Wait for rollout
+    run: 'export KUBECONFIG="${KUBECONFIG_PATH}"
+
+      kubectl -n "${{ inputs.namespace }}" rollout status deployment/"${{ inputs.deployment
+      }}" --timeout="${{ inputs.rolloutTimeout }}"
+
+      '
+    shell: bash

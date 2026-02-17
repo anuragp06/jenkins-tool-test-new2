@@ -1,0 +1,26 @@
+name: npmInstall
+description: Install npm dependencies with optional strict peer deps and audit
+inputs:
+  workspace:
+    description: Directory to run npm install in
+    required: false
+    default: .
+  strictPeerDeps:
+    description: Use strict peer dependencies
+    required: false
+    default: 'false'
+  audit:
+    description: Run npm audit after install
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+  - name: Install dependencies
+    run: "set -euo pipefail\ncd \"${{ inputs.workspace }}\"\nif [ \"${{ inputs.strictPeerDeps\
+      \ }}\" = \"true\" ]; then\n  npm ci\nelse\n  npm ci --legacy-peer-deps\nfi\n"
+    shell: bash
+  - name: Run npm audit if enabled
+    run: "cd \"${{ inputs.workspace }}\"\nif [ \"${{ inputs.audit }}\" = \"true\"\
+      \ ]; then\n  npm audit --audit-level=high || true\nfi\n"
+    shell: bash

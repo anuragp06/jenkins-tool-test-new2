@@ -1,0 +1,51 @@
+name: notifyStatus
+description: Notify build status to a channel and log the message
+inputs:
+  status:
+    description: Build status (e.g. SUCCESS, FAILURE)
+    required: false
+    default: UNKNOWN
+  channel:
+    description: Notification channel
+    required: false
+    default: '#build-notifications'
+  appName:
+    description: Application name
+    required: false
+    default: unknown-app
+  buildUrl:
+    description: Build URL
+    required: false
+    default: n/a
+  branch:
+    description: Branch name
+    required: false
+    default: n/a
+  slackEnabled:
+    description: Enable Slack notification (true/false)
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+  - name: Prepare status variables
+    run: "STATUS=\"${{ inputs.status }}\"\nSTATUS=\"${STATUS^^}\"\nCHANNEL=\"${{ inputs.channel\
+      \ }}\"\nAPP_NAME=\"${{ inputs.appName }}\"\nBUILD_URL=\"${{ inputs.buildUrl\
+      \ }}\"\nBRANCH=\"${{ inputs.branch }}\"\nif [ \"$STATUS\" = \"SUCCESS\" ]; then\n\
+      \  COLOR=\"#2eb886\"\nelif [ \"$STATUS\" = \"FAILURE\" ]; then\n  COLOR=\"#a30200\"\
+      \nelse\n  COLOR=\"#daa038\"\nfi\nMESSAGE=\"$APP_NAME $STATUS | branch=$BRANCH\
+      \ | <$BUILD_URL|Open Build>\"\necho \"COLOR=$COLOR\" >> $GITHUB_ENV\necho \"\
+      MESSAGE=$MESSAGE\" >> $GITHUB_ENV\necho \"CHANNEL=$CHANNEL\" >> $GITHUB_ENV\n"
+    shell: bash
+  - name: Send Slack notification if enabled
+    run: "if [ \"${{ inputs.slackEnabled }}\" = \"true\" ]; then\n  echo \"Sending\
+      \ Slack notification to $CHANNEL with color $COLOR and message: $MESSAGE\"\n\
+      \  # Placeholder for slackSend equivalent\n  # Replace the following line with\
+      \ your Slack integration command\n  # Example: curl -X POST -H 'Content-type:\
+      \ application/json' --data '{\"channel\":\"'$CHANNEL'\",\"attachments\":[{\"\
+      color\":\"'$COLOR'\",\"text\":\"'$MESSAGE'\"}]}' $SLACK_WEBHOOK_URL\nelse\n\
+      \  echo \"Slack notification disabled\"\nfi\n"
+    shell: bash
+  - name: Log notification message
+    run: echo "notifyStatus $MESSAGE"
+    shell: bash
