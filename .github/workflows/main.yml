@@ -1,0 +1,127 @@
+name: Webapp CI/CD
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      TARGET_ENV:
+        description: "Deployment environment"
+        required: false
+        default: "dev"
+        type: string
+      RUN_DEPLOY:
+        description: "Deploy after successful build"
+        required: false
+        default: true
+        type: boolean
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: "webapp"
+      IMAGE_REPOSITORY: "registry.example.com/team/webapp"
+      SLACK_CHANNEL: "#build-notifications"
+      NODE_TOOL: "20"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Check for package.json
+        id: check_node
+        run: |
+          if [ -f "package.json" ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies
+        if: steps.check_node.outputs.found == 'true'
+        run: npm install
+
+      - name: Run unit tests
+        if: steps.check_node.outputs.found == 'true'
+        run: npm test
+
+      - name: Build app
+        if: steps.check_node.outputs.found == 'true'
+        run: npm run build
+
+      - name: Archive build artifacts
+        if: steps.check_node.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/**
+
+      - name: Check for Dockerfile
+        id: check_dockerfile
+        run: |
+          if [ -f "Dockerfile" ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Docker build
+        if: steps.check_dockerfile.outputs.found == 'true'
+        run: |
+          docker build -t $IMAGE_REPOSITORY:${{ github.sha }} .
+
+      - name: Docker login
+        if: steps.check_dockerfile.outputs.found == 'true'
+        run: |
+          echo "${{ secrets.DOCKER_REGISTRY_CREDS }}" | docker login registry.example.com --username "${{ secrets.DOCKER_REGISTRY_USER }}" --password-stdin
+
+      - name: Docker push
+        if: steps.check_dockerfile.outputs.found == 'true'
+        run: |
+          docker push $IMAGE_REPOSITORY:${{ github.sha }}
+
+      - name: Check for kubeconfig secret
+        id: check_kubeconfig
+        run: |
+          if [ ! -z "${{ secrets[format('KUBECONFIG-{0}', github.event.inputs.TARGET_ENV || 'dev')] }}" ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy app
+        if: ${{ github.event.inputs.RUN_DEPLOY == 'true' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && steps.check_kubeconfig.outputs.found == 'true' }}
+        env:
+          KUBECONFIG_CONTENT: "${{ secrets[format('KUBECONFIG-{0}', github.event.inputs.TARGET_ENV || 'dev')] }}"
+        run: |
+          if [ -z "${KUBECONFIG:-}" ]; then
+            echo "KUBECONFIG is empty. Skipping deploy."
+            exit 0
+          fi
+          echo "$KUBECONFIG_CONTENT" > $HOME/.kube/config
+          export KUBECONFIG=$HOME/.kube/config
+          kubectl set image deployment/webapp webapp=$IMAGE_REPOSITORY:${{ github.sha }} -n web
+          kubectl rollout status deployment/webapp -n web --timeout=300s
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "SUCCESS: $APP_NAME" # Replace with Slack notification logic
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "FAILURE: $APP_NAME" # Replace with Slack notification logic
+
+      - name: Notify unstable
+        if: ${{ job.status == 'unstable' }}
+        run: |
+          echo "UNSTABLE: $APP_NAME" # Replace with Slack notification logic
+
+      - name: Clean workspace
+        if: always()
+        run: |
+          rm -rf ./*
